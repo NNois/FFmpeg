@@ -7,6 +7,8 @@
 - [BINK2.md](BINK2.md) — décodeur Bink Video 2 (SDK RAD)
 - [NDI.md](NDI.md) — device NDI (libndi_newtek) entrée/sortie
 - [DECKLINK.md](DECKLINK.md) — cartes Blackmagic (device decklink)
+- [SUPER-RESOLUTION.md](SUPER-RESOLUTION.md) — upscale IA avec alpha : libplacebo + shaders CNN, filtre `sr_rtx` (NVIDIA RTX VSR)
+- [LIBVPXENC.md](LIBVPXENC.md) — VP9 alpha : auto-sélection du pixel format (formats expérimentaux masqués), erreur ABI libvpx
 
 ## Build quick start
 - Fresh PC only: from an Administrator PowerShell, `./build-msys-install-msys2.ps1` (installs MSYS2 itself via Chocolatey to `C:\tools\msys64`).
@@ -17,6 +19,7 @@
 
 ## What changed
 - HAP: fixed HapQ YCoCg transform, added HapA (alpha-only), added HapR (BC7 modes 1/5/6/7), added HapH (BC6H HDR encode), and rebuilt HapM (Hap Q Alpha) multi-texture/chunk headers to match the spec. Quality via `-bc7_quality` (HapR) / `-bc6_quality` (HapH), both 0..4. BC7/BC6H now encoded through basis_universal. See [HAP.md](HAP.md).
+- libvpx-vp9: upstream 8.1 advertises experimental alpha formats (yuva422p, yuva444p, gbrap, 10/12-bit alpha) that the encoder then refuses without `-strict experimental`; the automatic pixel format selection picked them for RGBA / 4:4:4 alpha sources (e.g. after `sr_rtx`) and failed. `vp9_get_supported_config` in `libavcodec/libvpxenc.c` now hides them unless strict experimental, so auto-selection falls back to `yuva420p`.
 - Toolchain: Snappy/HAP enabled plus libvfw32 and build utilities wired into the latest build scripts.
 - Codecs kept: x264, x265, libvpx, vorbis/opus/lame, plus the usual FFmpeg stack.
 

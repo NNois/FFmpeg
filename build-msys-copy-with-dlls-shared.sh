@@ -92,19 +92,30 @@ copy_own_dlls() {
 # the application directory; everything else resolves from MINGW64. Each pass
 # can expose dependencies of the DLLs added by the previous one, so repeat
 # until nothing new is copied.
+#
+# PATH is forced to /mingw64/bin first: ldd follows the PATH, and another
+# bundle earlier on it (tools/ffmpeg of nnTools, AdFlocon...) would otherwise
+# shadow MINGW64 and be dropped by the grep. A DLL already in $dest is
+# REPLACED when it differs from MINGW64: the bundle must match the library
+# FFmpeg was just built against (libvpx 1.15 vs 1.17 = "ABI version mismatch").
 copy_mingw_deps() {
     local dest="$1"
-    local pass=0 added=1 dll required
+    local pass=0 added=1 dll required target
 
     while [ "$added" -ne 0 ] && [ "$pass" -lt 10 ]; do
         added=0
         pass=$((pass + 1))
-        required=$(cd "$dest" && ldd ./*.exe ./*.dll 2>/dev/null \
+        required=$(cd "$dest" && PATH="/mingw64/bin:$PATH" ldd ./*.exe ./*.dll 2>/dev/null \
                    | grep -i mingw64 | awk '{print $3}' | sort -u) || true
         for dll in $required; do
             [ -f "$dll" ] || continue
-            if [ ! -f "$dest/$(basename "$dll")" ]; then
-                cp -v "$dll" "$dest/"
+            target="$dest/$(basename "$dll")"
+            if [ ! -f "$target" ]; then
+                cp -v "$dll" "$target"
+                added=$((added + 1))
+            elif ! cmp -s "$dll" "$target"; then
+                echo "updating stale $(basename "$dll")"
+                cp -v "$dll" "$target"
                 added=$((added + 1))
             fi
         done
@@ -121,7 +132,7 @@ verify_bundle() {
     local missing=""
     local dll
 
-    for dll in $(cd "$dest" && ldd ./*.exe ./*.dll 2>/dev/null \
+    for dll in $(cd "$dest" && PATH="/mingw64/bin:$PATH" ldd ./*.exe ./*.dll 2>/dev/null \
                  | grep -i mingw64 | awk '{print $3}' | sort -u); do
         [ -f "$dest/$(basename "$dll")" ] || missing="$missing $(basename "$dll")"
     done
@@ -165,6 +176,15 @@ copy_bundle() {
         cp -v "$FFMPEG_BIN/ispc_texcomp.dll" "$dest/"
     elif [ -f "$ISPCTEXCOMP_ROOT/lib/ispc_texcomp.dll" ]; then
         cp -v "$ISPCTEXCOMP_ROOT/lib/ispc_texcomp.dll" "$dest/"
+    fi
+
+    # Super-resolution shaders (libplacebo custom_shader_path), runtime assets.
+    # rtxvsr.dll / nvngx_vsr.dll live in $FFMPEG_BIN and are already covered
+    # by copy_own_dlls above.
+    if [ -d "$FFMPEG_BIN/shaders" ]; then
+        rm -rf "$dest/shaders"
+        cp -r "$FFMPEG_BIN/shaders" "$dest/"
+        echo "Copied shaders/ ($(find "$dest/shaders" -type f | wc -l) files)"
     fi
 
     # Ensure SDL2.dll is included for ffplay (not linked by ffprobe)

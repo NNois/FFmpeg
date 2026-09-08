@@ -518,6 +518,7 @@ OBJS-$(CONFIG_SPLIT_FILTER)                  += split.o
 OBJS-$(CONFIG_SPP_FILTER)                    += vf_spp.o qp_table.o
 OBJS-$(CONFIG_SR_FILTER)                     += vf_sr.o
 OBJS-$(CONFIG_SR_AMF_FILTER)                 += vf_sr_amf.o scale_eval.o vf_amf_common.o
+OBJS-$(CONFIG_SR_RTX_FILTER)                 += vf_sr_rtx.o
 OBJS-$(CONFIG_SSIM_FILTER)                   += vf_ssim.o framesync.o
 OBJS-$(CONFIG_SSIM360_FILTER)                += vf_ssim360.o framesync.o
 OBJS-$(CONFIG_STEREO3D_FILTER)               += vf_stereo3d.o

@@ -36,63 +36,43 @@ pacman -S --needed --noconfirm \
     mingw-w64-x86_64-cmake \
     mingw-w64-x86_64-pkgconf \
     make \
-    diffutils
+    diffutils \
+    curl \
+    unzip
 
 echo ""
 echo "Step 3: Installing codec libraries..."
 
-# Ask about x265 alpha support
-echo ""
-echo "⚠️  IMPORTANT: x265 Alpha Channel Support"
-echo ""
-echo "The MSYS2 package 'mingw-w64-x86_64-x265' does NOT support alpha channels."
-echo "If you need H.265 with alpha (yuva420p, yuva420p10le), you must build x265 from source."
-echo ""
-echo "Options:"
-echo "  1) Install MSYS2 x265 (NO alpha support, quick install)"
-echo "  2) Build x265 from source (WITH alpha support, takes ~5 minutes)"
-echo ""
-read -p "Choose [1/2] (default: 1): " X265_CHOICE
-X265_CHOICE=${X265_CHOICE:-1}
-
-if [ "$X265_CHOICE" = "2" ]; then
-    echo ""
-    echo "✓ Will build x265 with alpha support after installing other dependencies"
-    BUILD_X265_FROM_SOURCE=true
-else
-    echo ""
-    echo "✓ Installing MSYS2 x265 package (no alpha support)"
-    BUILD_X265_FROM_SOURCE=false
+# x265 is NEVER taken from MSYS2: the package has neither alpha nor the
+# 8+10+12 bit multilib this fork needs. It is built from source into /mingw64
+# by build-msys-prepare-x265-with-alpha.sh. Detect what is installed so the
+# script never overwrites a good build and only offers the source build when
+# it is actually missing.
+X265_OK=false
+if command -v /mingw64/bin/x265 >/dev/null 2>&1 && \
+   /mingw64/bin/x265 --version 2>&1 | grep -q "8bit+10bit+12bit" && \
+   /mingw64/bin/x265 --help 2>/dev/null | grep -qi -- "--alpha"; then
+    X265_OK=true
+fi
+if pacman -Q mingw-w64-x86_64-x265 >/dev/null 2>&1; then
+    echo "⚠️  The MSYS2 package mingw-w64-x86_64-x265 is installed: a future"
+    echo "   'pacman -Syu' can overwrite the source-built x265 (alpha + multilib)."
+    echo "   Remove it with: pacman -Rdd mingw-w64-x86_64-x265"
+    echo "   then re-run ./build-msys-prepare-x265-with-alpha.sh"
 fi
 
-echo ""
-if [ "$BUILD_X265_FROM_SOURCE" = "false" ]; then
-    pacman -S --needed --noconfirm \
-        mingw-w64-x86_64-snappy \
-        mingw-w64-x86_64-x264 \
-        mingw-w64-x86_64-x265 \
-        mingw-w64-x86_64-libvpx \
-        mingw-w64-x86_64-aom \
-        mingw-w64-x86_64-svt-av1 \
-        mingw-w64-x86_64-dav1d \
-        mingw-w64-x86_64-libvorbis \
-        mingw-w64-x86_64-opus \
-        mingw-w64-x86_64-lame \
-        mingw-w64-x86_64-fdk-aac
-else
-    # Install all codecs EXCEPT x265 (we'll build it from source)
-    pacman -S --needed --noconfirm \
-        mingw-w64-x86_64-snappy \
-        mingw-w64-x86_64-x264 \
-        mingw-w64-x86_64-libvpx \
-        mingw-w64-x86_64-aom \
-        mingw-w64-x86_64-svt-av1 \
-        mingw-w64-x86_64-dav1d \
-        mingw-w64-x86_64-libvorbis \
-        mingw-w64-x86_64-opus \
-        mingw-w64-x86_64-lame \
-        mingw-w64-x86_64-fdk-aac
-fi
+# Install all codecs EXCEPT x265 (built from source, see above)
+pacman -S --needed --noconfirm \
+    mingw-w64-x86_64-snappy \
+    mingw-w64-x86_64-x264 \
+    mingw-w64-x86_64-libvpx \
+    mingw-w64-x86_64-aom \
+    mingw-w64-x86_64-svt-av1 \
+    mingw-w64-x86_64-dav1d \
+    mingw-w64-x86_64-libvorbis \
+    mingw-w64-x86_64-opus \
+    mingw-w64-x86_64-lame \
+    mingw-w64-x86_64-fdk-aac
 
 echo ""
 echo "Step 4: Installing additional libraries..."
@@ -110,7 +90,8 @@ echo "Step 5: Installing Vulkan libraries..."
 pacman -S --needed --noconfirm \
     mingw-w64-x86_64-vulkan-headers \
     mingw-w64-x86_64-vulkan-loader \
-    mingw-w64-x86_64-shaderc
+    mingw-w64-x86_64-shaderc \
+    mingw-w64-x86_64-libplacebo
 
 echo ""
 echo ""
@@ -127,10 +108,10 @@ echo ""
 echo "  Codec Libraries:"
 echo "    - Snappy (for HAP encoder) ⭐"
 echo "    - x264 (H.264 encoder)"
-if [ "$BUILD_X265_FROM_SOURCE" = "true" ]; then
-    echo "    - x265 (H.265 encoder) - WILL BE BUILT WITH ALPHA SUPPORT ⭐"
+if [ "$X265_OK" = "true" ]; then
+    echo "    - x265 (H.265 encoder) - source build with alpha + multilib already in /mingw64 ⭐"
 else
-    echo "    - x265 (H.265 encoder) - NO alpha support"
+    echo "    - x265 (H.265 encoder) - NOT installed yet: run ./build-msys-prepare-x265-with-alpha.sh"
 fi
 echo "    - libvpx (VP8/VP9 encoder)"
 echo "    - libaom (AV1 reference encoder)"
@@ -155,7 +136,7 @@ echo "    - Shaderc (SPIR-V shader compiler)"
 echo ""
 echo ""
 
-if [ "$BUILD_X265_FROM_SOURCE" = "true" ]; then
+if [ "$X265_OK" != "true" ]; then
     echo "Next steps:"
     echo "  1) ./build-msys-prepare-x265-with-alpha.sh  (build x265 with alpha support)"
     echo "  2) ./build-msys-shared.sh           (build FFmpeg)"
@@ -166,13 +147,18 @@ if [ "$BUILD_X265_FROM_SOURCE" = "true" ]; then
         ./build-msys-prepare-x265-with-alpha.sh
     fi
 else
+    echo "x265 (alpha + multilib) already prepared."
+    echo "Optional SDK/asset preparation (each is picked up automatically by build-msys-shared.sh):"
+    echo "  ./build-msys-prepare-shaders.sh       (SR shaders for the libplacebo filter)"
+    echo "  ./build-msys-prepare-rtxvideosdk.sh   (RTX VSR shim, needs the SDK + MSVC + CUDA)"
+    echo ""
     echo "You can now build FFmpeg with:"
     echo "  ./build-msys-shared.sh"
-    echo ""
-    echo "Run it now? (Y/n)"
-    read -r RUN_BUILD
-    if [ -z "$RUN_BUILD" ] || [ "$RUN_BUILD" = "y" ] || [ "$RUN_BUILD" = "Y" ]; then
-        ./build-msys-shared.sh
-    fi
 fi
+echo ""
+echo "⚠️  'pacman -Sy' + 'pacman -S' above UPGRADES already installed packages"
+echo "   (libvpx, aom, dav1d, srt...). FFmpeg links against the new versions:"
+echo "   rebuild it (./build-msys-shared.sh) AND redeploy every bundle"
+echo "   (./build-msys-copy-with-dlls-shared.sh), otherwise the old DLLs left in"
+echo "   nnTools/AdFlocon fail with e.g. libvpx 'ABI version mismatch'."
 echo ""

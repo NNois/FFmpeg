@@ -73,6 +73,43 @@ else
     echo "  Run ./build-msys-prepare-decklinksdk.sh to enable them."
 fi
 
+# libplacebo (MSYS2 package): Vulkan renderer with alpha support and mpv
+# .hook custom shaders (CNN super-resolution: FSRCNNX, Anime4K, RAVU...).
+# The shaders themselves are runtime text files bundled in bin/shaders/.
+PLACEBO_ENABLE=""
+if pkg-config --exists "libplacebo >= 5.229.0" 2>/dev/null; then
+    PLACEBO_ENABLE="--enable-libplacebo"
+    echo "libplacebo found: $(pkg-config --modversion libplacebo) (libplacebo filter enabled)"
+else
+    echo "WARNING: libplacebo not installed. libplacebo filter disabled."
+    echo "  pacman -S mingw-w64-x86_64-libplacebo (or ./build-msys-install-dependencies.sh)"
+fi
+
+SHADERS_ROOT="${SHADERS_ROOT:-$PWD/thirdparty/shaders}"
+if ls "$SHADERS_ROOT"/*.glsl >/dev/null 2>&1; then
+    echo "SR shaders found: $SHADERS_ROOT (bundled in bin/shaders/)"
+else
+    echo "WARNING: SR shaders not downloaded. Run ./build-msys-prepare-shaders.sh"
+    echo "  to bundle FSRCNNX / Anime4K / RAVU next to ffmpeg.exe."
+fi
+
+# NVIDIA RTX Video SDK (VSR): reached through the MSVC shim rtxvsr.dll built
+# by build-msys-prepare-rtxvideosdk.sh. Only the shim header is needed at
+# configure time; the DLLs are loaded at runtime by the sr_rtx filter.
+RTXVSR_ROOT="${RTXVSR_ROOT:-$PWD/thirdparty/rtxvsr}"
+RTXVSR_CFLAGS=""
+RTXVSR_ENABLE=""
+if [ -f "$RTXVSR_ROOT/include/rtxvsr.h" ] && \
+   [ -f "$RTXVSR_ROOT/build_mingw/rtxvsr.dll" ] && \
+   [ -f "$RTXVSR_ROOT/build_mingw/nvngx_vsr.dll" ]; then
+    RTXVSR_CFLAGS="-I$RTXVSR_ROOT/include"
+    RTXVSR_ENABLE="--enable-librtxvsr"
+    echo "RTX VSR shim found: $RTXVSR_ROOT (sr_rtx filter enabled)"
+else
+    echo "WARNING: RTX Video SDK shim not built. sr_rtx filter disabled."
+    echo "  Run ./build-msys-prepare-rtxvideosdk.sh to enable it."
+fi
+
 echo "=========================================="
 echo "FFmpeg -  ♥♥ Alternative Development Broadcast Edition ♥♥ - 8.1.2"
 echo "Rebuilding with SHARED DLLs (mpv-compatible)"
@@ -93,6 +130,8 @@ echo "  - Video: --enable-libx264 --enable-libx265 --enable-libvpx --enable-liba
 echo "  - Audio: --enable-libvorbis --enable-libopus --enable-libmp3lame --enable-libfdk-aac"
 echo "  - HAP: --enable-libsnappy + basis_universal (BC7/BC6H static link)"
 echo "  - Vulkan: --enable-vulkan --enable-libshaderc"
+echo "  - libplacebo (SR shaders): ${PLACEBO_ENABLE:-disabled (pacman -S mingw-w64-x86_64-libplacebo)}"
+echo "  - RTX VSR (sr_rtx): ${RTXVSR_ENABLE:-disabled (run ./build-msys-prepare-rtxvideosdk.sh)}"
 echo "  - Network: --enable-libsrt --enable-openssl"
 echo "  - NDI: ${NDISDK_ENABLE:-disabled (run ./build-msys-prepare-ndisdk.sh)}"
 echo "  - DeckLink: ${DECKLINK_ENABLE:-disabled (run ./build-msys-prepare-decklinksdk.sh)}"
@@ -168,7 +207,9 @@ echo ""
     --enable-d3d12va \
     $NDISDK_ENABLE \
     $DECKLINK_ENABLE \
-    --extra-cflags="-O3 $BASISU_CFLAGS $BINK2SDK_CFLAGS $NDISDK_CFLAGS $DECKLINK_CFLAGS" \
+    $PLACEBO_ENABLE \
+    $RTXVSR_ENABLE \
+    --extra-cflags="-O3 $BASISU_CFLAGS $BINK2SDK_CFLAGS $NDISDK_CFLAGS $DECKLINK_CFLAGS $RTXVSR_CFLAGS" \
     --extra-cxxflags="-O3 $DECKLINK_CFLAGS" \
     --extra-ldflags="$BASISU_LDFLAGS $BINK2SDK_LDFLAGS $NDISDK_LDFLAGS" \
     --extra-libs="$BASISU_LIBS $BINK2SDK_LIBS"
@@ -217,25 +258,58 @@ echo ""
 echo "Step 7: Bundling required DLLs..."
 echo ""
 
-# Copy required MINGW64 DLLs to the install bin dir
-REQUIRED_DLLS=$(ldd "$FFMPEG_BIN/ffprobe.exe" | grep mingw64 | awk '{print $3}')
+# Copy required MINGW64 DLLs to the install bin dir.
+# ldd resolves DLLs through the PATH, so an older bundle elsewhere on the PATH
+# (tools/ffmpeg of nnTools, AdFlocon...) would shadow /mingw64/bin, get
+# filtered out by the mingw64 grep and never be copied - which is how a stale
+# libvpx 1.15 ended up next to an FFmpeg built against 1.17 ("ABI version
+# mismatch"). Force /mingw64/bin first, scan recursively (exes + DLLs already
+# copied) and overwrite whatever differs from MINGW64.
 DLL_COUNT=0
-
-for dll in $REQUIRED_DLLS; do
-    if [ -f "$dll" ]; then
-        cp -v "$dll" "$FFMPEG_BIN/"
-        DLL_COUNT=$((DLL_COUNT + 1))
-    fi
+pass=0
+added=1
+while [ "$added" -ne 0 ] && [ "$pass" -lt 10 ]; do
+    added=0
+    pass=$((pass + 1))
+    REQUIRED_DLLS=$(cd "$FFMPEG_BIN" && PATH="/mingw64/bin:$PATH" ldd ./*.exe ./*.dll 2>/dev/null \
+                    | grep -i mingw64 | awk '{print $3}' | sort -u) || true
+    for dll in $REQUIRED_DLLS; do
+        [ -f "$dll" ] || continue
+        target="$FFMPEG_BIN/$(basename "$dll")"
+        if [ ! -f "$target" ] || ! cmp -s "$dll" "$target"; then
+            cp -v "$dll" "$target"
+            DLL_COUNT=$((DLL_COUNT + 1))
+            added=$((added + 1))
+        fi
+    done
 done
 
 echo ""
-echo "✓ Bundled $DLL_COUNT DLLs"
+echo "✓ Bundled $DLL_COUNT DLLs from MINGW64 ($pass pass(es))"
 echo ""
 
 # NDI runtime DLL is not a mingw64 DLL, bundle it explicitly
 if [ -n "$NDISDK_ENABLE" ] && [ -f "$NDISDK_ROOT/build_mingw/Processing.NDI.Lib.x64.dll" ]; then
     cp -v "$NDISDK_ROOT/build_mingw/Processing.NDI.Lib.x64.dll" "$FFMPEG_BIN/"
     echo "✓ Bundled NDI runtime DLL"
+    echo ""
+fi
+
+# RTX VSR: the MSVC shim and the NVIDIA runtime it needs, both loaded at
+# runtime from the executable directory.
+if [ -n "$RTXVSR_ENABLE" ]; then
+    cp -v "$RTXVSR_ROOT/build_mingw/rtxvsr.dll" "$FFMPEG_BIN/"
+    cp -v "$RTXVSR_ROOT/build_mingw/nvngx_vsr.dll" "$FFMPEG_BIN/"
+    echo "✓ Bundled RTX VSR runtime DLLs"
+    echo ""
+fi
+
+# Super-resolution shaders for the libplacebo filter (custom_shader_path).
+if ls "$SHADERS_ROOT"/*.glsl >/dev/null 2>&1; then
+    rm -rf "$FFMPEG_BIN/shaders"
+    mkdir -p "$FFMPEG_BIN/shaders"
+    cp -r "$SHADERS_ROOT"/. "$FFMPEG_BIN/shaders/"
+    echo "✓ Bundled SR shaders in $FFMPEG_BIN/shaders ($(find "$FFMPEG_BIN/shaders" -type f \( -name '*.glsl' -o -name '*.hook' \) | wc -l) files)"
     echo ""
 fi
 
@@ -260,6 +334,18 @@ if [ -n "$DECKLINK_ENABLE" ]; then
     echo ""
     echo "Testing DeckLink devices:"
     "$FFMPEG_BIN/ffmpeg" -hide_banner -devices 2>/dev/null | grep decklink || echo "DeckLink not found in devices"
+fi
+
+if [ -n "$PLACEBO_ENABLE" ]; then
+    echo ""
+    echo "Testing libplacebo filter:"
+    "$FFMPEG_BIN/ffmpeg" -hide_banner -filters 2>/dev/null | grep -w libplacebo || echo "libplacebo not found in filters"
+fi
+
+if [ -n "$RTXVSR_ENABLE" ]; then
+    echo ""
+    echo "Testing sr_rtx filter:"
+    "$FFMPEG_BIN/ffmpeg" -hide_banner -filters 2>/dev/null | grep -w sr_rtx || echo "sr_rtx not found in filters"
 fi
 
 echo ""

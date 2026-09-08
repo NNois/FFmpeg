@@ -2152,6 +2152,42 @@ static const enum AVPixelFormat vp9_pix_fmts_highbd[] = {
     AV_PIX_FMT_NONE
 };
 
+/* Alpha formats other than YUVA420P are refused by vpx_init() unless
+ * -strict experimental is given. Advertising them by default made the
+ * automatic pixel format selection (ffmpeg CLI, adConvert) pick e.g. gbrap
+ * for an RGBA or 4:4:4 alpha source and then fail, instead of falling back
+ * to yuva420p. Without strict experimental only the widely supported lists
+ * below are exposed. */
+static const enum AVPixelFormat vp9_pix_fmts_highcol_strict[] = {
+    AV_PIX_FMT_YUV420P,
+    AV_PIX_FMT_YUVA420P,
+    AV_PIX_FMT_YUV422P,
+    AV_PIX_FMT_YUV440P,
+    AV_PIX_FMT_YUV444P,
+    AV_PIX_FMT_GBRP,
+    AV_PIX_FMT_NONE
+};
+
+static const enum AVPixelFormat vp9_pix_fmts_highbd_strict[] = {
+    AV_PIX_FMT_YUV420P,
+    AV_PIX_FMT_YUVA420P,
+    AV_PIX_FMT_YUV422P,
+    AV_PIX_FMT_YUV440P,
+    AV_PIX_FMT_YUV444P,
+    AV_PIX_FMT_YUV420P10,
+    AV_PIX_FMT_YUV422P10,
+    AV_PIX_FMT_YUV440P10,
+    AV_PIX_FMT_YUV444P10,
+    AV_PIX_FMT_YUV420P12,
+    AV_PIX_FMT_YUV422P12,
+    AV_PIX_FMT_YUV440P12,
+    AV_PIX_FMT_YUV444P12,
+    AV_PIX_FMT_GBRP,
+    AV_PIX_FMT_GBRP10,
+    AV_PIX_FMT_GBRP12,
+    AV_PIX_FMT_NONE
+};
+
 static int vp9_get_supported_config(const AVCodecContext *avctx,
                                     const AVCodec *codec,
                                     enum AVCodecConfig config,
@@ -2160,12 +2196,16 @@ static int vp9_get_supported_config(const AVCodecContext *avctx,
 {
     if (config == AV_CODEC_CONFIG_PIX_FORMAT) {
         vpx_codec_caps_t codec_caps = vpx_codec_get_caps(vpx_codec_vp9_cx());
+        int experimental = !avctx ||
+                           avctx->strict_std_compliance <= FF_COMPLIANCE_EXPERIMENTAL;
         if (codec_caps & VPX_CODEC_CAP_HIGHBITDEPTH) {
-            *out = vp9_pix_fmts_highbd;
-            *out_num = FF_ARRAY_ELEMS(vp9_pix_fmts_highbd) - 1;
+            *out = experimental ? vp9_pix_fmts_highbd : vp9_pix_fmts_highbd_strict;
+            *out_num = (experimental ? FF_ARRAY_ELEMS(vp9_pix_fmts_highbd)
+                                     : FF_ARRAY_ELEMS(vp9_pix_fmts_highbd_strict)) - 1;
         } else {
-            *out = vp9_pix_fmts_highcol;
-            *out_num = FF_ARRAY_ELEMS(vp9_pix_fmts_highcol) - 1;
+            *out = experimental ? vp9_pix_fmts_highcol : vp9_pix_fmts_highcol_strict;
+            *out_num = (experimental ? FF_ARRAY_ELEMS(vp9_pix_fmts_highcol)
+                                     : FF_ARRAY_ELEMS(vp9_pix_fmts_highcol_strict)) - 1;
         }
         return 0;
     }

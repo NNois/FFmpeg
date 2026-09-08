@@ -273,6 +273,8 @@ External library support:
   --enable-librsvg         enable SVG rasterization via librsvg [no]
   --enable-librubberband   enable rubberband needed for rubberband filter [no]
   --enable-librtmp         enable RTMP[E] support via librtmp [no]
+  --enable-librtxvsr       enable NVIDIA RTX Video Super Resolution through the
+                           rtxvsr.dll shim, needed for the sr_rtx filter [no]
   --enable-libshaderc      enable runtime GLSL->SPIRV compilation via libshaderc [no]
   --enable-libshine        enable fixed-point MP3 encoding via libshine [no]
   --enable-libsmbclient    enable Samba protocol via libsmbclient [no]
@@ -2082,6 +2084,7 @@ EXTERNAL_LIBRARY_LIST="
     librist
     librsvg
     librtmp
+    librtxvsr
     libshaderc
     libshine
     libsmbclient
@@ -4203,6 +4206,7 @@ sab_filter_deps="gpl swscale"
 scale2ref_filter_deps="swscale"
 scale_filter_deps="swscale"
 sr_amf_filter_deps="amf"
+sr_rtx_filter_deps="librtxvsr LoadLibrary swscale"
 vpp_amf_filter_deps="amf"
 scale_qsv_filter_deps="libmfx"
 scale_qsv_filter_select="qsvvpp"
@@ -7369,6 +7373,7 @@ enabled libqrencode       && require_pkg_config libqrencode libqrencode qrencode
 enabled libquirc          && require libquirc quirc.h quirc_decode -lquirc
 enabled librabbitmq       && require_pkg_config librabbitmq "librabbitmq >= 0.7.1" amqp.h amqp_new_connection
 enabled librav1e          && require_pkg_config librav1e "rav1e >= 0.5.0" rav1e.h rav1e_context_new
+enabled librtxvsr         && require_headers rtxvsr.h
 enabled librist           && require_pkg_config librist "librist >= 0.2.7" librist/librist.h rist_receiver_create
 enabled librsvg           && require_pkg_config librsvg librsvg-2.0 librsvg-2.0/librsvg/rsvg.h rsvg_handle_new_from_data
 enabled librtmp           && require_pkg_config librtmp librtmp librtmp/rtmp.h RTMP_Socket

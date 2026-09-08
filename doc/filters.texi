@@ -22911,6 +22911,68 @@ sr_amf=4096:2160:algorithm=sr1-1
 @end example
 @end itemize
 
+@anchor{sr_rtx}
+@section sr_rtx
+
+Upscale the input with NVIDIA RTX Video Super Resolution (RTX Video SDK).
+Requires an RTX 20xx or newer GPU, driver 550.58 or newer, and the runtime
+DLLs @file{rtxvsr.dll} and @file{nvngx_vsr.dll} next to the executable.
+Build with @code{--enable-librtxvsr} (see @file{build-msys-prepare-rtxvideosdk.sh}).
+
+The filter works on @code{rgba} / @code{rgb0} frames; other formats are
+converted automatically. Colour is upscaled by VSR. When the input has an
+alpha channel, the alpha plane is upscaled in a second pass so sources such
+as @code{yuva420p} keep a matching alpha. Straight alpha is premultiplied
+around VSR to avoid fringes on transparent edges.
+
+The filter accepts the following options:
+
+@table @option
+@item scale
+Output scale factor, used when @option{w} and @option{h} are 0. Default 2.0.
+Any ratio >= 1 is accepted, 1.0 only sharpens and deblocks.
+
+@item w
+@item h
+Output size in pixels. Giving only one keeps the aspect ratio.
+
+@item quality
+VSR quality level, 0 to 4. 0 is the SDK bicubic reference, 4 is the best and
+slowest. Default 4.
+
+@item gpu
+CUDA device index. Default 0.
+
+@item alpha
+How the alpha plane is upscaled:
+@table @samp
+@item vsr
+Run VSR on the alpha as a grey image (default), edges match the colour pass.
+@item bicubic
+swscale bicubic.
+@end table
+
+@item premult
+Premultiply straight alpha before VSR and unpremultiply after. -1 (default)
+does it whenever the frame is not flagged premultiplied, 0 never, 1 always.
+@end table
+
+@subsection Examples
+
+@itemize
+@item
+Upscale a HEVC alpha source twice and keep the alpha:
+@example
+ffmpeg -i in.mov -vf sr_rtx=scale=2 -pix_fmt yuva444p10le -c:v prores_ks -profile:v 4 out.mov
+@end example
+
+@item
+Upscale to 4K UHD with a faster quality level:
+@example
+ffmpeg -i in.mp4 -vf sr_rtx=w=3840:h=2160:quality=3 out.mp4
+@end example
+@end itemize
+
 @section ssim
 
 Obtain the SSIM (Structural SImilarity Metric) between two input videos.

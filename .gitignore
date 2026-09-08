@@ -43,6 +43,11 @@ nul
 /thirdparty/x265/build_mingw/
 /thirdparty/decklinksdk/include/
 /thirdparty/ISPCTextureCompressor/lib/
+/thirdparty/rtxvideosdk/
+/thirdparty/rtxvsr/build_mingw/
+/thirdparty/rtxvsr/include/
+/thirdparty/shaders/
+/.claude-context.md
 /build-*.log
 /ffmpeg
 /ffplay
